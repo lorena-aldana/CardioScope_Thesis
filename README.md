@@ -1,7 +1,7 @@
 # CardioScope_Thesis
 Code for CardioScope. Real-time synchronised recording and visualisation of ECG an PCG signals. 
 
-The current code has been debugged using Python 3.6.4 
+Running version uses Python 3.6.4 
 
 Required dependencies:
 
