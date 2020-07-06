@@ -9,6 +9,11 @@ Required dependencies:
 - Numpy
 - Scipy
 - PyQt5
+- Bitalino
+
+Source of marimba audio files: University of Iowa Electronic Music Studios
+
+http://theremin.music.uiowa.edu/MIS-Pitches-2012/MISMarimba2012.html
 
 References for real-time audio processing using Python:
 
