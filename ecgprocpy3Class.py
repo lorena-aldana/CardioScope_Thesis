@@ -5,6 +5,7 @@ from SuperColliderOSC import SuperColliderClient
 
 global all_data, scserver
 all_data = []
+#create instance of SuperCollider class
 scserver = SuperColliderClient()
 
 
@@ -19,11 +20,13 @@ def set_ecg_thread_values(data_in, sr_in, run_flag_in, timeref, time_info, thld,
     bf_thld = thld
     buffered_ecg_data = buf_ecg_data
 
-def set_son_values(sontype, amp, pan):
-    global sonType, ampValue, panning
+def set_son_values(sontype, amp, pan, listeningmode):
+    global sonType, ampValue, panning, lmode
     sonType = sontype
     ampValue = amp
     panning = pan
+    lmode = listeningmode
+    print(lmode, sonType, ampValue, panning)
 
 
 class ecg_scaling(object):
@@ -50,7 +53,7 @@ class ecgsig_proc_2(object):
     def __init__(self, samplerate):
         super(ecgsig_proc_2, self).__init__()
         global gl_ecgdata, gl_sr, gl_run_flag, one_second, gl_databuffer, gl_time
-        global sonType, ampValue, panning
+        global sonType, ampValue, panning, lmode
         self.samplerate = samplerate
         gl_ecgdata = []
         gl_run_flag = []
@@ -61,6 +64,7 @@ class ecgsig_proc_2(object):
         sonType = 'marimba';
         ampValue = 0.0;
         panning = 0.0
+        lmode = ' '
 
     def r_peak_RT_det(self):
 
@@ -68,9 +72,8 @@ class ecgsig_proc_2(object):
 
             if gl_run_flag == True:
 
-                self.find_R_peaks(buffered_ecg_data[-self.samplerate:], window=int(self.samplerate/8), thpercentage=0.65, plot=True)
-                time.sleep(0.1)
-
+                self.find_R_peaks(buffered_ecg_data[-self.samplerate:], window=int(self.samplerate))
+                time.sleep(int(self.samplerate/self.samplerate))
 
             elif gl_run_flag == False:
                 break
@@ -120,15 +123,16 @@ class ecgsig_proc_2(object):
         signalfilt = signal.filtfilt(b, a, data[:])
         return signalfilt
 
-    def R_peaks_detection_window(self, ampdata, timedata, thld):
-
+    def R_peaks_detection_window(self, ampdata, thld):
         '''This function chooses one peak in the given time window.
         It is the core function in ecgprocpy3 for calculating R peaks'''
+        thld = thld
         detected_peaks = []
-        lastPeak = []
+        lastPeak = 0
+        selectedpeak = None
         above_threshold = False
+        last_above_thrld = False
         for x in range(len(ampdata)):
-            last_above_thrld = above_threshold
             curValue = ampdata[x]
             if curValue > thld:
                 above_threshold = True
@@ -136,8 +140,9 @@ class ecgsig_proc_2(object):
                 above_threshold = False
 
             if above_threshold == True:
-                if len(lastPeak) == 0 or curValue > lastPeak[1]:
-                    lastPeak = [timedata[x], ampdata[x]]
+                if curValue > lastPeak:
+                    lastPeak = ampdata[x]
+
             if last_above_thrld == True and above_threshold == False:
                 detected_peaks.append(lastPeak)
                 lastPeak = []
@@ -145,144 +150,55 @@ class ecgsig_proc_2(object):
             last_above_thrld = above_threshold
 
         if len(detected_peaks) > 0:  # select max peak among peaks found in window
-            peakamp, loc = max([(x[1], i) for i, x in enumerate(detected_peaks)])
+            peakamp, loc = max([(x, i) for i, x in enumerate(detected_peaks)])
             selectedpeak = detected_peaks[loc]
+
             return selectedpeak
 
     def r_peak_found(self):
-        global sonType, ampValue, panning
-        print('QRS complex found')
-        #To sonify the R peak
+        global sonType, ampValue, panning, lmode
+        # print('QRS complex found')
+        #To sonify the R peak:
         synth_name = sonType
-        scserver.sc_msg("s_new", [synth_name, -1, 1, 0, "buf", 8, 'amp', ampValue, 'pan', panning])
+        mode= lmode
+        if mode == 'ecglistening':
+            if sonType == 'marimba':
+                scserver.sc_msg("s_new", [synth_name, -1, 1, 0, "buf", np.random.randint(0,3), 'amp', 0.2, 'pan', panning])
+            elif sonType == 'water':
+                scserver.sc_msg("s_new", [synth_name, -1, 1, 0, "buf", 5, 'amp', 3.0, 'pan', 0.0])
+        if mode == 'ecgandsthlistening':
+            panning = -1
+            if sonType == 'marimba':
+                scserver.sc_msg("s_new", [synth_name, -1, 1, 0, "buf", np.random.randint(0,3), 'amp', 0.2, 'pan', panning])
+            elif sonType == 'water':
+                scserver.sc_msg("s_new", [synth_name, -1, 1, 0, "buf", 5, 'amp', 3.0, 'pan', panning])
 
-    # def find_R_peaks(self, data, run_flag=False, window=200, thpercentage=0.65, plot=False):
-    #     '''This function filters the signal, calculates the time stamps for the peaks function and find
-    #     the R peaks in one ECG lead'''
-    #     global tref
-    #     tref = 0.0
-    #     # Find R peaks
-    #     # peaks_final_sel=[]
-    #     while True:
-    #
-    #         if len(all_data) >= one_second:
-    #             print('One second of data stored')
-    #             if gl_run_flag == True:
-    #
-    #                 # data = all_data[-44000:]
-    #                 flag = gl_run_flag
-    #                 # print ('Thread is listening')
-    #                 # print(('Run flag is %s')%(flag))
-    #                 # print(data[-5:])
-    #
-    #                 sig = all_data[-one_second:]
-    #
-    #                 # ----Test the process without the filtering and without the hb transform, to reduce computing power:-----
-    #
-    #                 # Filter the signal
-    #                 sigf = self.bandpassIIR_filter(sig, self.samplerate, fc1=5, fc2=70, order=2)
-    #                 # Hilbert transform
-    #                 ht = self.hilbert_transform(sigf)
-    #
-    #                 # Set threshold for peaks detection
-    #                 maxamp = np.max(ht)
-    #                 minamp = np.min(ht)
-    #                 thld = (np.abs(maxamp - minamp) * thpercentage)  # Threshold is 75 of the amplitude in the signal
-    #                 sig = ht  # now the sig variable contains the hilbert transform
-    #
-    #                 # ----Test the process without the filtering and without the hb transform, to reduce computing power:------
-    #                 # thld = 6000
-    #
-    #
-    #                 # Calculate time stamps
-    #                 # tref = 0.0
-    #                 tlist = []  # Initialize list for timestamps
-    #                 dtsamples = (1.0 / self.samplerate)  # Time between samples
-    #                 peaks = []
-    #                 peaks_final_sel = []
-    #                 size_an_window = window
-    #                 # time_stamps_second = np.linspace(0, one_second/self.samplerate, one_second)
-    #                 for count, element in enumerate(sig, 1):  # Start counting from 1
-    #                     if count % size_an_window == 0:
-    #                         segment = sig[count - size_an_window:count]
-    #                         for x in range(len(segment)):  # Create time stamps according to sample rate
-    #                             tlist.append(tref)
-    #                             tref = tref + dtsamples
-    #                         times = tlist[len(tlist) - size_an_window:len(tlist)]
-    #                         peak_found = self.R_peaks_detection_window(segment, times,
-    #                                                                    thld)  # Calculate peaks in window
-    #
-    #                         # If a new peak is found
-    #                         if peak_found is not None:
-    #                             print('printing r peaks found')
-    #                             print(peak_found)
-    #                             self.r_peak_found()
-    #                         peaks.append(peak_found)
-    #                 peaks_final_sel = [x for x in peaks if x is not None]  # Time, amplitude
-    #                 r_in_samples = [x[0] * self.samplerate for x in peaks_final_sel]  # Peak location in samples
-    #
-    #                 time.sleep(0.05)
-    #             # print ('printing R peaks:')
-    #             # print (peaks_final_sel)
-    #             # print(len(peaks_final_sel))
-    #
-    #             elif gl_run_flag == False:
-    #                 break
-    #                 # else:
-    #                 # 	time.sleep(2) #wai until the buffer is filled with one second of data
-    #
-    #     return
 
-    def find_R_peaks(self, data, window=200, thpercentage=0.65, plot=False):
+    def find_R_peaks(self, data, window):
         '''This function filters the signal, calculates the time stamps for the peaks function and find
         the R peaks in one ECG lead'''
-        global tref
-        tref = 0.0
-
         sig = data
-
-        # if plot == True:
-        #
-        # 	plt.figure()
-        # 	plt.plot(sig)
+        peak_found = []
 
         # ----Test the process without the filtering and without the hb transform, to reduce computing power:-----
 
         # Filter the signal
-        sigf = self.bandpassIIR_filter(sig, self.samplerate, fc1=5, fc2=70, order=2)
+        sigf = self.bandpassIIR_filter(sig, self.samplerate, fc1=5, fc2=40, order=2)
         # Hilbert transform
         ht = self.hilbert_transform(sigf)
 
         # Set threshold for peaks detection
-        # the threshold is calculated in the audio stream callback function
+        # the threshold is calculated in the audio stream callback function based on the last three seconds of ECG data
         thld = bf_thld
+        sig = ht  # now the sig variable contains the hilbert transform, thus the threshold changes
 
-        sig = ht  # now the sig variable contains the hilbert transform
+        # for count, element in enumerate(sig, 1):  # Start counting from 1
+        #     if count % window == 0:
+        peak_found = self.R_peaks_detection_window(sig, thld)  # Calculate peaks in window
 
-        # ----Test the process without the filtering and without the hb transform, to reduce computing power:------
+        # If a new peak is found
+        if peak_found is not None:
+            self.r_peak_found()
+            return
 
-        # Calculate time stamps
-        tlist = []  # Initialize list for timestamps
-        dtsamples = (1.0 / self.samplerate)  # Time between samples
-        peaks = []
-        # peaks_final_sel = []
-        size_an_window = window
-        # time_stamps_second = np.linspace(0, one_second/self.samplerate, one_second)
-        for count, element in enumerate(sig, 1):  # Start counting from 1
-            if count % size_an_window == 0:
-                segment = sig[count - size_an_window:count]
-                for x in range(len(segment)):  # Create time stamps according to sample rate
-                    tlist.append(tref)
-                    tref = tref + dtsamples
-                times = tlist[len(tlist) - size_an_window:len(tlist)]
-                peak_found = self.R_peaks_detection_window(segment, times, thld)  # Calculate peaks in window
-
-                # If a new peak is found
-                if peak_found is not None:
-                    self.r_peak_found()
-                    peaks.append(peak_found)
-                    break
-        # peaks_final_sel = [x for x in peaks if x is not None]  # Time, amplitude
-
-        return
 

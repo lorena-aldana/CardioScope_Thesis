@@ -2,7 +2,10 @@ print ("This is CardioScope")
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from stethoscope_in import audio, set_gui,receive_updated_GUI_values
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+#PyQt4
+# from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+#PyQt5
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 import sys
 import os
@@ -141,7 +144,7 @@ class cardioscope_gui(QtWidgets.QWidget):
         self.label_controlsth.setFont(font_main)
         self.label_controlsth.setAlignment(QtCore.Qt.AlignCenter)
         self.label_filter_slider = QtWidgets.QLabel("Select the cutoff frequency of the lowpass filter [Hz]")
-        self.label_level_slider = QtWidgets.QLabel("Select the level of the sound [dB]")
+        self.label_level_slider = QtWidgets.QLabel("Select the sound level [dB]")
         #Sliders:
         #filter
         self.filter_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -187,7 +190,8 @@ class cardioscope_gui(QtWidgets.QWidget):
         # ----------------------%---------------------------------#
         # UI general setup
         self.setLayout(self.main_layout)
-        self.setGeometry(650, 650, 650, 650)
+        # self.setGeometry(650, 650, 650, 650)
+        self.setGeometry(810, 810, 810, 810)
         self.setWindowTitle('CardioScope')
 
     def init_variables_and_arrays(self):
@@ -215,11 +219,11 @@ class cardioscope_gui(QtWidgets.QWidget):
         self.send_values.receive_lm_value(lm)
 
     def son_type_marimba(self):
-        son = '﻿marimba'
+        son = 'marimba'
         self.send_values.receive_sonification_type(son)
 
     def son_type_water(self):
-        son = '﻿water'
+        son = 'water'
         self.send_values.receive_sonification_type(son)
 
     def init_plot(self):
@@ -239,18 +243,18 @@ class cardioscope_gui(QtWidgets.QWidget):
 
         # # labels
 
-        self.axecg.set_title('ECG signal', fontsize=10)
+        self.axecg.set_title('ECG signal', fontsize=6)
         self.axecg.set_yticks([-15000, 0, 15000])
-        self.axecg.tick_params(axis='both', which='major', labelsize=9)
-        self.axecg.set_ylabel('Amplitude', fontsize=8)
+        self.axecg.tick_params(axis='both', which='major', labelsize=5)
+        self.axecg.set_ylabel('Amplitude', fontsize=5)
 
 
-        self.axaudio.set_title('Stethoscope', fontsize=10)
+        self.axaudio.set_title('Stethoscope', fontsize=6)
         # self.axaudio.set_xticks(np.linspace(0,self.sample_rate), 5)
         self.axaudio.set_yticks([-15000, 0, 15000])
-        self.axaudio.tick_params(axis='both', which='major', labelsize=9)
-        self.axaudio.set_xlabel('Samples', fontsize=8)
-        self.axaudio.set_ylabel('Amplitude', fontsize=8)
+        self.axaudio.tick_params(axis='both', which='major', labelsize=5)
+        self.axaudio.set_xlabel('Samples', fontsize=6)
+        self.axaudio.set_ylabel('Amplitude', fontsize=6)
 
         self.main_figure.figure.tight_layout()
 
@@ -278,7 +282,6 @@ class cardioscope_gui(QtWidgets.QWidget):
 
         # Update value in the callback function:
         self.send_values.receive_filter_slider_value(self.filter_slider_cv)
-        # receive_filter_slider_value(self.filter_slider_cv) #send filter current value
 
     def level_slider_update(self):
         self.level_slider_cv = self.level_slider.value()

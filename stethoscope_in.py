@@ -3,7 +3,7 @@ import numpy as np
 import time
 import threading
 import scipy.signal as signal
-from ecgprocpy3Class import ecg_scaling, ecgsig_proc_2
+from ecgprocpy3Class import ecgsig_proc_2
 from ecgprocpy3Class import set_ecg_thread_values
 from ecgprocpy3Class import set_son_values
 
@@ -30,6 +30,7 @@ class receive_updated_GUI_values(object):
         self.update_filter_values(filter_cutoff)
 
     def update_filter_values(self,fc):
+        'Function to update filter values when the GUI filter slider has changed'
         global a, b, zi
         fs = self.val_sr
         a = [1, -np.exp(-2 * np.pi * fc / fs)]
@@ -37,6 +38,7 @@ class receive_updated_GUI_values(object):
         zi = signal.lfiltic(b, a, [0])
 
     def receive_lm_value(self, lm):
+        'Funtion to select a listening mode and define initial conditions'
         global listeningmode, amp
         listeningmode= lm
 
@@ -50,7 +52,7 @@ class receive_updated_GUI_values(object):
             amp = 0.0
             pan = 0.0
 
-        set_son_values(sonType, amp, pan)
+        set_son_values(sonType, amp, pan, listeningmode)
 
     def receive_sonification_type(self, son):
         global sonType, listeningmode, amp
@@ -66,13 +68,13 @@ class receive_updated_GUI_values(object):
             amp = 0.0
             pan = 0.0
 
-        set_son_values(sonType, amp, pan)
+        set_son_values(sonType, amp, pan, listeningmode)
 
 
 class audio(object):
     'Class to input and process audio'
 
-    def __init__(self, channels=2, rate=44100, frames_per_buffer=2048, format = pyaudio.paInt16):
+    def __init__(self, channels=2, rate=22050, frames_per_buffer=8192, format = pyaudio.paInt16):
         global sr, _ecg_data, ecgproc, ecgscale, timeref
         timeref = time.time()
         self.ecg_buf = []
@@ -115,23 +117,30 @@ class audio(object):
                         stream_callback=self.callback)
 
     def start_pyaudio_pre_recorded(self, wave):
+        '''This function uses pre-recorded audio. It sued the example file available in the GitHub repository.'''
         print('Starting pre_recorded audio')
         self.audio = pyaudio.PyAudio()
+        print('Audio system info:')
+        print(self.audio.get_device_count())
+        print(self.audio.get_default_input_device_info())
+        print(self.audio.get_device_info_by_index(0))
+        print(self.audio.get_device_info_by_index(1))
+        print(self.audio.get_device_info_by_index(2))
+        print(self.audio.get_device_info_by_index(3))
         self.wf = wave
         self.stream = self.audio.open(format=self.format,
                       channels=self.channels,
                       rate=self.audio_sr,
                       output=True,
                       frames_per_buffer=self.frames,
-                      stream_callback=self.callback_pre_recorded)
+                      stream_callback=self.callback_pre_recorded, output_device_index = 1)
 
 
-        #start thread to find R peaks
-        self.ecgproc = ecgsig_proc_2(self.audio_sr)
-        # self.thread_ecg = threading.Thread(target=self.ecgproc.find_R_peaks,args=(self._ecg_data, self.run_flag, 200, 0.8, False))
+        #start thread to find R peaks:
+        self.ecgproc = ecgsig_proc_2(self.audio_sr) #create an instance
         self.thread_ecg = threading.Thread(target=self.ecgproc.r_peak_RT_det,args=())
-        ## To detect -and sonify- the R peaks, start the thread
-        # self.thread_ecg.start()
+        ## To detect -and sonify- the R peaks, start the thread:
+        self.thread_ecg.start()
         self.run_flag = True
 
 
@@ -155,7 +164,7 @@ class audio(object):
         return (cumsum[N:] - cumsum[:-N]) / float(N)
 
     def volume_smooth(self):
-        "Function to create smooth transitions whene there are level changes in the stethoscope signal"
+        "Function to create smooth transitions when there are level changes in the stethoscope signal"
         len_smooth_signal = self.frames
         self.smo_sig = np.linspace(self.start_level_value, stethoscope_level_value, len_smooth_signal)
         self.start_level_value = stethoscope_level_value
@@ -163,6 +172,7 @@ class audio(object):
         return self.smo_sig
 
     def get_amp_mod_buffer(self):
+        'Funtion to implement amplitude modultation in real-time. Not used in the current implementation.'
 
         if self.buf_pt_end <= self.len_amp_mod:
             self.mod_buf_sel = self.modulated_smooth[self.buf_pt_start:self.buf_pt_end] #select chunk of modulation signal
@@ -203,7 +213,7 @@ class audio(object):
         #         window = np.hamming(t_e - t_b)
         # modulation
 
-        #Refer to the CardioScope paper for a deeper explanation on the following parameters:
+        #Refer to the CardioScope paper for an explanation on the following parameters:
         gain = 2
         background = 0.2
 
@@ -219,7 +229,7 @@ class audio(object):
         return self.modulated_smooth
 
     def ecg_buffer(self, data):
-
+        'Three seconds of ECG data are stored and the peak detection threshold is calculated'
         #Add data to buffer
         self.ecg_buf.extend(data)
 
@@ -231,16 +241,14 @@ class audio(object):
             trimmed_ecg_buffer = self.ecg_buf[-int(self.audio_sr*3):]
             self.ecg_buf = trimmed_ecg_buffer
 
-        buf_thld = np.max(self.ecg_buf)*0.95
+        buf_thld = np.max(self.ecg_buf)*0.60 #60% of the amplitude
 
         return self.ecg_buf, int(buf_thld)
 
 
-
-
     def callback_pre_recorded(self, in_data, frame_count, time_info, status):
 
-        '''This function is used to show CardioScope and its functionalities using pre-recorded data. 
+        '''This is the callback function for pre-recorded data. It is used to show CardioScope and its functionalities using pre-recorded data.
         It doesn't create a new audio file. But it allows user to test the GUI parameters in real-time. '''
 
         global a, b, zi
@@ -256,12 +264,10 @@ class audio(object):
         self.reshape_data = np.reshape(self.y, (chunk_length, self.channels))
         self.ecg_ch = [x[0] for x in self.reshape_data]
         self.sth_ch = [x[1] for x in self.reshape_data]
-
         #--------feature detection------------------
         #Find ECG R peaks
         #Make a copy of the ECG data array
         self._ecg_data = self.ecg_ch
-        # self.thread_ecg.join()
         # -------------R peak finding -----------------------
         #add data to ecg buffer
         self.buffered_ecgdata, self.thld = self.ecg_buffer(self._ecg_data)
@@ -272,16 +278,13 @@ class audio(object):
 
         # -----------Filter per channel ------------
         self.sth_filtered, zi = signal.lfilter(b, a, self.sth_ch, zi=zi)
-
         # -----------volume control -----------
         #call volume smooth signal
         self.smooth_level = self.volume_smooth()
-
-
         self.left = self.ecg_ch
-        #Smooth volume changes
+        #Smooth volume changes:
         self.right = self.sth_filtered * self.smooth_level
-        # Tip: print(np.max(self.right))# ---> Max should be 32768, otherwise it will clip
+        # Tip: print(np.max(self.right))# ---> Max should be 32768 (if audio bit depth == 16 bits), otherwise it will clip
 
         # # -------------Amplitude modulation [Not yet implemented in real-time]-----------------
         
@@ -290,7 +293,7 @@ class audio(object):
         #Modulate the stethoscope signal
         # self.right = self.sth_filtered * amp_mod_buf_signal
 
-        # -----------Combine left right after volume control
+        # -----------Combine left right channels after volume control and depending on listening mode
         if listeningmode == 'sthlistening':
             self.LR = self.outputLR(frame_count, self.right, self.right)
         elif listeningmode == 'ecglistening':
@@ -304,8 +307,7 @@ class audio(object):
         audio_output = self.LR.astype(np.int16)
 
         # -----------call values tunnel function/communicates to main GUI---------
-        #to plot unfiltered und unleveled values
-        # self.audio_amp_values_tunnel(self.ecg_ch, self.sth_ch)
+        #to plot unfiltered und unleveled values:
         self.audio_amp_values_tunnel(self.ecg_ch, self.sth_ch)
 
 
@@ -320,6 +322,7 @@ class audio(object):
         zi = signal.lfiltic(b, a, [0])
 
     def callback(self, in_data, frame_count, time_info, status):
+        'callback function when data is being recorded using the ECG and PCG recording system'
         global a, b, zi
 
         #------------Concatenate the bytes stream-------------
@@ -348,8 +351,6 @@ class audio(object):
         # -----------Combine left right after volume control
         self.LR = self.outputLR(frame_count, self.left, self.right)
 
-
-
         #-----------Convert output array to bytes-----------
         audio_output = self.LR.astype(np.int16)
 
@@ -367,13 +368,10 @@ class audio(object):
 
         for sample in range(0, frame_length * 2):
             #Separate left and right channels
-            # print(sample)
             if sample % 2:
-                self.output[sample] = right_ch[(int)(sample / 2)]
-                # print(right_ch[int(sample/2)])
-                # print (right_ch[(int)(sample / 2)])
+                self.output[sample] = right_ch[(int)(sample / 2)] #right channel
             else:
-                self.output[sample] = left_ch[(int)(sample / 2)]
+                self.output[sample] = left_ch[(int)(sample / 2)] #left channel
 
         return self.output
 
